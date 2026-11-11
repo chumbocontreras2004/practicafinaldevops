@@ -1,0 +1,121 @@
+name: Pipeline
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - '**.go'
+      - 'go.mod'
+      - 'go.sum'
+      - '.github/workflows/ci.yml'
+  pull_request:
+    branches:
+      - main
+    paths:
+      - '**.go'
+      - 'go.mod'
+      - 'go.sum'
+      - '.github/workflows/ci.yml'
+  workflow_dispatch:
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout del repositorio
+        uses: actions/checkout@v4
+
+      - name: Configurar entorno de Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.22'
+          cache: false
+
+      - name: Ejecutar golangci-lint
+        uses: golangci/golangci-lint-action@v6
+
+      - name: Ejecutar go vet
+        run: go vet ./...
+test:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout del repositorio
+        uses: actions/checkout@v4
+
+      - name: Configurar entorno de Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.22'
+          cache: false
+
+      - name: Mostrar version de Go
+        run: go version
+
+      - name: Ejecutar tests unitarios
+        run: go test ./...
+      
+      - name: Generar y mostrar log detallado de tests
+        run: |
+          go test -v ./... > test.log
+          cat test.log
+
+      - name: Subir artefacto tests
+        uses: actions/upload-artifact@v7 
+        with:
+          name: tests
+          path: test.log
+build:
+    runs on: ubuntu-latest
+    steps:
+      - name: Checkout del repositorio
+        uses: actions/checkout@v4
+
+      - name: Configurar entorno de Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.22'
+          cache: false
+      
+      - name: Crear dist y ejecutar go build
+        run: |
+          mkdir -p dist
+          go build -o dist/notas
+
+      - name: Información sobre el archivo dist/notas
+        run: ls -l dist/notas
+       
+      - name: Subir artefacto app
+        uses: actions/upload-artifact@v7
+        with:
+          name: app
+          path: dist
+
+package:
+    runs-on: ubuntu-latest
+    needs: [lint, test, build]
+    steps: 
+      - name: Descargar artefacto app en dist
+        uses: actions/download-artifact@v8
+        with:
+          name: app
+          path: dist
+
+      - name: Descargar artefacto tests en informes
+        uses: actions/download-artifact@v8
+        with:
+          name: tests
+          path: informes
+
+      - name: Listar contenidos descargados
+        run: ls -l dist informes
+  
+      - name: Ejecutar ./dist/notas y guardar la salida
+        run: |
+          chmod +x dist/notas
+          ./dist/notas > notas.log
+          cat notas.log
+      
+      - name: Comprobar con grep que la salida contiene "nota lista"
+        run: grep "nota lista" notas.log
+
+      - name: Mostrar informes/test.log
+        run: cat informes/test.log
